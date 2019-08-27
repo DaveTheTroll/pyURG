@@ -57,10 +57,6 @@ class UrgDevice(serial.Serial):
         self.get_parameter()
         return True
 
-    def is_open(self):
-        '''If port is opening, return True.'''
-        return self.isOpen()
-
     def flush_input_buf(self):
         '''Clear input buffer.'''
         self.flushInput()
@@ -75,62 +71,62 @@ class UrgDevice(serial.Serial):
     def set_scip2(self):
         '''Set SCIP2.0 protcol'''
         self.flush_input_buf()
-        self.send_command('SCIP2.0\n')
+        self.send_command(b'SCIP2.0\n')
         return self.__receive_data()
 
     def get_version(self):
         '''Get version information.'''
-        if not self.is_open():
+        if not self.isOpen():
             return False
 
         self.flush_input_buf()
-        self.send_command('VV\n')
+        self.send_command(b'VV\n')
         get = self.__receive_data()
         return get
 
     def get_parameter(self):
         '''Get device parameter'''
-        if not self.is_open():
+        if not self.isOpen():
             return False
         
-        self.send_command('PP\n')
+        self.send_command(b'PP\n')
         
         get = self.__receive_data()
         
         # check expected value
-        if not (get[:2] == ['PP\n', '00P\n']):
+        if not (get[:2] == [b'PP\n', b'00P\n']):
             return False
         
         # pick received data out of parameters
         self.pp_params = {}
         for item in get[2:10]:
-            tmp = re.split(r':|;', item)[:2]
+            tmp = re.split(r':|;', item.decode('utf-8'))[:2]
             self.pp_params[tmp[0]] = tmp[1]
         return self.pp_params
 
     def laser_on(self):
         '''Turn on the laser.'''
-        if not self.is_open():
+        if not self.isOpen():
             return False
         
-        self.send_command('BM\n')
+        self.send_command(b'BM\n')
         
         get = self.__receive_data()
         
-        if not(get == ['BM\n', '00P\n', '\n']) and not(get == ['BM\n', '02R\n', '\n']):
+        if not(get == [b'BM\n', b'00P\n', b'\n']) and not(get == [b'BM\n', b'02R\n', b'\n']):
             return False
         return True
         
     def laser_off(self):
         '''Turn off the laser.'''
-        if not self.is_open():
+        if not self.isOpen():
             return False
 
         self.flush_input_buf()
-        self.send_command('QT\n')
+        self.send_command(b'QT\n')
         get = self.__receive_data()
         
-        if not(get == ['QT\n', '00P\n', '\n']):
+        if not(get == [b'QT\n', b'00P\n', b'\n']):
             return False
         return True
     
@@ -162,7 +158,7 @@ class UrgDevice(serial.Serial):
 
     def create_capture_command(self):
         '''create capture command.'''
-        cmd = 'GD' + self.pp_params['AMIN'].zfill(4) + self.pp_params['AMAX'].zfill(4) + '01\n'
+        cmd = ('GD' + self.pp_params['AMIN'].zfill(4) + self.pp_params['AMAX'].zfill(4) + '01\n').encode('utf-8')
         return cmd
 
     def scan_sec(self):
@@ -174,7 +170,7 @@ class UrgDevice(serial.Serial):
         if not self.laser_on():
             return [], -1
 
-        # Receive lenght data
+        # Receive length data
         cmd = self.create_capture_command()
         self.flush_input_buf()
         self.send_command(cmd)
@@ -182,44 +178,41 @@ class UrgDevice(serial.Serial):
         get = self.__receive_data()
         
         # checking the answer
-        if not (get[:2] == [cmd, '00P\n']):
+        if not (get[:2] == [cmd, b'00P\n']):
             return [], -1
         
         # decode the timestamp
         tm_str = get[2][:-1] # timestamp
-        timestamp = self.__decode(tm_str)
+        timestamp = self.__decode(tm_str.decode('utf-8'))
         
         # decode length data
         length_byte = 0
         line_decode_str = ''
-        if cmd[:2] == ('GS' or 'MS'):
+        if cmd[:2] == (b'GS' or b'MS'):
             length_byte = 2
-        elif cmd[:2] == ('GD' or 'MD'):
+        elif cmd[:2] == (b'GD' or b'MD'):
             length_byte = 3
         # Combine different lines which mean length data
         NUM_OF_CHECKSUM = -2
         for line in get[3:]:
-            line_decode_str += line[:NUM_OF_CHECKSUM]
+            line_decode_str += line[:NUM_OF_CHECKSUM].decode('utf-8')
 
         # Set dummy data by begin index.
         self.length_data = [-1 for i in range(int(self.pp_params['AMIN']))]
         self.length_data += self.__decode_length(line_decode_str, length_byte)
         return (self.length_data, timestamp)
-        
 
-def main():
+if __name__ == '__main__':
     urg = UrgDevice()
-    if not urg.connect():
-        print 'Connect error'
+    if not urg.connect('COM18'):
+        print('Connect error')
         exit()
 
-    for i in range(10):
+    for key, val in urg.pp_params.items():
+        print(key, val)
+
+    for i in range(3):
         data, tm = urg.capture()
         if data == 0:
             continue
-        print len(data), tm
-
-
-
-if __name__ == '__main__':
-    main()
+        print(len(data), tm, data)

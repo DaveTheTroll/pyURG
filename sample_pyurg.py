@@ -9,7 +9,7 @@ urg = pyurg.UrgDevice()
 # Connect to the URG device.
 # If could not conncet it, get False from urg.connect()
 if not urg.connect():
-    print 'Could not connect.'
+    print('Could not connect.')
     exit()
 
 # Get length datas and timestamp.
@@ -18,4 +18,4 @@ data, timestamp = urg.capture()
 
 # Print lengths.
 for length in data:
-    print length
+    print(length)
