@@ -3,17 +3,21 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as anim
 import threading
 import numpy as np
+import sys
 
 def start_map():
     fig = plt.figure()
-    map, = plt.plot((-10000, 10000),(-10000, 10000),'x')
+    map, pnt = plt.plot((-10000, 10000),(-10000, 10000),'x', 0,0,'rp')
+    text = plt.text(0,0,'TARGET')
     plt.axis('equal')
     plt.grid()
-    ani = anim.FuncAnimation(fig, update_map, fargs=(map, ), blit=True)
+    ani = anim.FuncAnimation(fig, update_map, fargs=(map, pnt, text), blit=True)
     plt.show()
 
-def update_map(n, map):
+def update_map(n, map, pnt, text):
     global data, new_data
+    global target_selected, target
+    global min_target, max_target
 
     if new_data:
         new_data = False
@@ -23,13 +27,21 @@ def update_map(n, map):
         x = np.multiply(d, np.cos(theta)) 
         y = np.multiply(d, np.sin(theta))
         map.set_data(x, y)
+        pnt.set_data(x[target], y[target])
+        text.set_position((x[target], y[target]))
+        text.set_text(str(target))
 
-    return map,
+        if not target_selected:
+            target += 1
+            if target > max_target:
+                target = min_target
+
+    return map, pnt, text
 
 def start_urg():
     global data, new_data, run
     urg = UrgDevice()
-    if not urg.connect('COM18'):
+    if not urg.connect('COM12'):
         print('Connect error')
         exit()
 
@@ -41,6 +53,19 @@ def start_urg():
 #############################################################################
 new_data = False
 run = True
+if len(sys.argv) == 2:
+    target_selected = True
+    target = int(sys.argv[1])
+elif len(sys.argv) == 3:
+    target_selected = False
+    min_target = int(sys.argv[1])
+    max_target = int(sys.argv[2])
+    target = min_target
+else:
+    target_selected = False
+    target = 0
+    min_target = 0
+    max_target = 416
 thread = threading.Thread(target=start_urg)
 thread.start()
 start_map()
