@@ -66,7 +66,14 @@ class UrgDevice(serial.Serial):
         self.write(cmd)
 
     def __receive_data(self):
-        return self.readlines()
+        #return self.readlines()
+        get = []
+        line = (0,0)
+        while len(line) > 1:
+            line = self.readline()
+            get.append(line)
+
+        return get
     
     def set_scip2(self):
         '''Set SCIP2.0 protcol'''
@@ -156,27 +163,32 @@ class UrgDevice(serial.Serial):
         rad = (2.0 * math.pi) * (index - int(self.pp_params['AFRT'])) / int(self.pp_params['ARES'])
         return rad
 
-    def create_capture_command(self):
+    def create_capture_command(self, start=-1, stop=-1):
         '''create capture command.'''
-        cmd = ('GD' + self.pp_params['AMIN'].zfill(4) + self.pp_params['AMAX'].zfill(4) + '01\n').encode('utf-8')
+        if start == -1:
+            start = self.pp_params['AMIN']
+        if stop == -1:
+            stop = self.pp_params['AMAX']
+        cmd = ('GD' + str(start).zfill(4) + str(stop).zfill(4) + '01\n').encode('utf-8')
         return cmd
 
     def scan_sec(self):
         '''Return time of a cycle.'''
         rpm = float(self.pp_params['SCAN'])
         return (60.0 / rpm)
-        
-    def capture(self):
-        if not self.laser_on():
-            return [], -1
 
-        # Receive length data
-        cmd = self.create_capture_command()
-        self.flush_input_buf()
-        self.send_command(cmd)
-        time.sleep(0.1)
+    def prep_fast_capture(self, start=-1, stop=-1):
+        self.capture_command = self.create_capture_command(start, stop)
+        if not self.laser_on():
+            raise "Laser On Failure"
+    
+    def fast_capture(self):
+        self.send_command(self.capture_command)
+        return self.__retreive_capture(self.capture_command)
+
+    def __retreive_capture(self, cmd):
         get = self.__receive_data()
-        
+
         # checking the answer
         if not (get[:2] == [cmd, b'00P\n']):
             return [], -1
@@ -198,11 +210,25 @@ class UrgDevice(serial.Serial):
             line_decode_str += line[:NUM_OF_CHECKSUM].decode('utf-8')
 
         # Set dummy data by begin index.
-        self.length_data = [-1 for i in range(int(self.pp_params['AMIN']))]
-        self.length_data += self.__decode_length(line_decode_str, length_byte)
-        return (self.length_data, timestamp)
+        length_data = [-1 for i in range(int(self.pp_params['AMIN']))]
+        length_data += self.__decode_length(line_decode_str, length_byte)
+        return (length_data, timestamp)
+        
+    def capture(self, start=-1, stop=-1):
+        if not self.laser_on():
+            return [], -1
+
+        # Receive length data
+        cmd = self.create_capture_command(start, stop)
+        self.flush_input_buf()
+        self.send_command(cmd)
+        #time.sleep(0.1)
+
+        return self.__retreive_capture(cmd)
 
 if __name__ == '__main__':
+    from datetime import datetime
+
     urg = UrgDevice()
     if not urg.connect('COM18'):
         print('Connect error')
@@ -211,8 +237,13 @@ if __name__ == '__main__':
     for key, val in urg.pp_params.items():
         print(key, val)
 
-    for i in range(3):
-        data, tm = urg.capture()
-        if data == 0:
-            continue
-        print(len(data), tm, data)
+    urg.prep_fast_capture(200, 210)
+
+    for j in range(100):
+        start = datetime.now()
+        for i in range(100):
+            data, tm = urg.fast_capture()
+            if data == 0:
+                continue
+        end = datetime.now()
+        print("100 Readings (s): ", (end-start).total_seconds())
